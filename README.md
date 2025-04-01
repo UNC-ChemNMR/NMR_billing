@@ -49,6 +49,11 @@ After processing, the tool produces several output files to help you review the 
 
 ## Usage (Windows)
 
+0. Locate and download the .exe file:
+   - Visit the GitHub repository: https://github.com/yourusername/parse_bruker_logs
+   - Navigate to the Releases section.
+   - Download the latest `parse_bruker_logs.exe` file from the `dist` directory and save it to your computer.
+
 1. Open the Windows command prompt:
    - Press Win + R, type cmd, and hit Enter.
 2. Change the directory to where parse_bruker_logs.exe is located:
@@ -79,6 +84,7 @@ After processing, the tool produces several output files to help you review the 
    ```cmd
    parse_bruker_logs.exe --help
    ```
+   ```
 
 
 ## Add `parse_bruker_logs.exe` to PATH: run from anywhere
@@ -91,7 +97,7 @@ Following these steps makes it easier to run `parse_bruker_logs.exe` from any co
 2. Press Win + R, type `sysdm.cpl`, and press Enter to open System Properties.
 3. In the System Properties window, go to the "Advanced" tab and click "Environment Variables".
 4. In the Environment Variables window, under "System variables", select the `PATH` variable and click "Edit".
-5. Click "New" and add the full directory path where `parse_bruker_logs.exe` is located (e.g., `C:\path\to\parse_bruker_logs`).
+5. Click "New" and add the full directory path where `parse_bruker_logs.exe` is located (e.g., `C:\path\to\parse_bruker_logs\dist`). You can copy this path directly by right-clicking on the directory in File Explorer and selecting "Copy address as text."
 6. Click "OK" to save the changes, and close all dialogs.
 7. Open a new command prompt window and test by entering `parse_bruker_logs.exe` from any directory.
 
@@ -102,7 +108,11 @@ Following these steps makes it easier to run `parse_bruker_logs.exe` from any co
 - Alcon and NMR Core usage is automatically extracted from internal billable usage.
 - Automatic correction of user input errors, such as misspelled onyens or invalid grant identifiers.
 - Automatically extracts Onyens (UNC usernames) from user-inputted UNC email addresses. **Note**: The email must follow the format `onyen@{domain}.edu` for accurate parsing.
+- Generate report for utilization and usage:
 
+   | Average Hourly Utilization                                       | Average Daily Utilization                                      | Lab Usage                              |
+   | :--------------------------------------------------------------: | :------------------------------------------------------------: | :------------------------------------: |
+   | ![Average Hourly Utilization](img/report_hourly_utilization.png) | ![Average Daily Utilization](img/report_daily_utilization.png) | ![Lab Usage](img/report_lab_usage.png) |
 
 ## Usage (Python)
 

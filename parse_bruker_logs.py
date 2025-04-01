@@ -6,6 +6,10 @@ import sys
 from datetime import datetime
 import os
 from difflib import get_close_matches
+import matplotlib
+import calendar
+matplotlib.use('Agg')  # Set the backend to Agg (non-interactive)
+import matplotlib.pyplot as plt
 
 # Version information
 VERSION = "1.0.0"
@@ -235,6 +239,100 @@ def save_outputs(log_file: Path,
                 'value': '<NA>',
                 'format': red_font
             })
+            
+def generate_report(df: pd.DataFrame, log_file: Path, output_dir: Path) -> None:
+    base_name = Path(log_file).stem
+    output_dir = Path(output_dir / "reports")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Ensure timestamp columns are datetime
+    df = df.copy()  # Avoid SettingWithCopyWarning by working on a copy
+    df['start_timestamp'] = pd.to_datetime(df['start_timestamp'], errors='coerce')
+    df['end_timestamp'] = pd.to_datetime(df['end_timestamp'], errors='coerce')
+
+    # Calculate usage duration in hours
+    df['duration_hours'] = (df['end_timestamp'] - df['start_timestamp']).dt.total_seconds() / 3600
+
+    # Filter out invalid durations
+    df = df[df['duration_hours'] > 0]
+
+    # Distribute usage across hours
+    hourly_usage = pd.Series(0, index=range(24), dtype=float)
+    for _, row in df.iterrows():
+        start = row['start_timestamp']
+        end = row['end_timestamp']
+        duration = row['duration_hours']
+
+        # Calculate usage distribution across hours
+        current = start
+        while current < end:
+            next_hour = (current + pd.Timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+            if next_hour > end:
+                next_hour = end
+            usage_in_hour = (next_hour - current).total_seconds() / 3600
+            hourly_usage[current.hour] += usage_in_hour
+            current = next_hour
+
+    # Plot hourly utilization
+    unique_days = df['start_timestamp'].dt.date.nunique()
+    hourly_utilization = (hourly_usage / unique_days) * 100  # Utilization as percentage of each hour
+    plt.figure(figsize=(10, 6))
+    hourly_utilization.plot(kind='bar', color='lightgreen')
+    plt.title('Average Hourly Utilization')
+    plt.xlabel('Hour of the Day')
+    plt.ylabel('Utilization (%)')
+    plt.ylim(0, 100)  # Set y-axis limits
+    plt.xticks(range(24), labels=range(24), rotation=0)
+    plt.tight_layout()
+    plt.savefig(output_dir / f"{base_name}_hourly_utilization.png")
+    plt.close()
+
+    # Plot daily utilization as percentage
+    df['day_of_week'] = df['start_timestamp'].dt.day_name()  # Extract day of the week
+    total_usage_by_day = df.groupby('day_of_week')['duration_hours'].sum()
+
+    # Calculate the number of occurrences of each day in the log time period
+    unique_dates = df['start_timestamp'].dt.date.unique()
+    days_count = pd.Series([calendar.day_name[date.weekday()] for date in unique_dates]).value_counts()
+
+    # Normalize usage by the number of occurrences of each day
+    normalized_usage_by_day = (total_usage_by_day / days_count).reindex(list(calendar.day_name), fill_value=0)
+
+    # Calculate total hours in a day (24 hours) and convert to percentage
+    normalized_usage_percentage = (normalized_usage_by_day / 24) * 100
+
+    # Plot normalized daily utilization as percentage
+    plt.figure(figsize=(10, 6))
+    normalized_usage_percentage.plot(kind='bar', color='skyblue')
+    plt.title('Average Daily Utilization (%)')
+    plt.xlabel('Day of the Week')
+    plt.ylabel('Average Utilization (%)')
+    plt.ylim(0, 100)  # Set y-axis limits
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    plt.savefig(output_dir / f"{base_name}_daily_utilization.png")
+    plt.close()
+
+    # Plot usage by lab
+    df['lab'] = df['advisor'].str.lower()  # Normalize lab names
+    df['user'] = df['onyen'].str.lower()  # Normalize user names
+    lab_usage = df.groupby(['lab', 'user'])['duration_hours'].sum().unstack(fill_value=0)
+
+    # Sort labs by total usage
+    lab_usage['total_usage'] = lab_usage.sum(axis=1)
+    lab_usage = lab_usage.sort_values(by='total_usage', ascending=False).drop(columns=['total_usage'])
+
+    lab_usage.plot(kind='bar', stacked=True, figsize=(12, 8), colormap='tab20', legend=False)
+    plt.title('Usage by Lab and User')
+    plt.xlabel('Lab')
+    plt.ylabel('Total Usage Hours')
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    plt.savefig(output_dir / f"{base_name}_lab_usage.png")
+    plt.close()
+
+    print(f"Report generated successfully! Check the reports directory: {output_dir}")
+
 
 def parseArgs():
     """Parse command-line arguments for the script."""
@@ -254,10 +352,16 @@ def parseArgs():
         help="Path to the people_in_facility CSV file."
     )
     prs.add_argument(
-        "-o", "--output",
+        "-o", "--output_dir",
         type=str,
-        default=None,
+        default="output",
         help="Output directory (default: directory of input file)"
+    )
+    prs.add_argument(
+        "-r", "--report",
+        action="store_true",
+        default=False,
+        help="Generates usage report based on the log file."
     )
     prs.add_argument(
         "-v", "--version",
@@ -275,8 +379,8 @@ def main():
         pif_file = Path(args.pif_file).absolute()
         
         # Handle output directory
-        if args.output:
-            output_dir = Path(args.output).absolute()
+        if args.output_dir:
+            output_dir = Path(args.output_dir).absolute()
         else:
             output_dir = log_file.parent
         
@@ -306,10 +410,18 @@ def main():
         print(f"  - {Path(log_file).stem}_noCFS.csv: {len(noCFS_df)} runs without valid CFS")
         print(f"  - {Path(log_file).stem}_Alcon.csv: {len(alcon_df)} Alcon runs")
         print(f"  - {Path(log_file).stem}_NMR_Core.csv: {len(nmr_core_df)} NMR Core runs")
-        print(f"  - {Path(log_file).stem}_processed.xlsx: Full report with all data")
+        print(f"  - {Path(log_file).stem}_processed.xlsx: Full report with all data\n")
         
     except Exception as e:
         print(f"\nError: {str(e)}", file=sys.stderr)
+        sys.exit(1)
+        
+    try:
+        if args.report:
+            # Generate report based on the log file
+            generate_report(log, log_file, output_dir)
+    except Exception as e:
+        print(f"\nError generating report: {str(e)}", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":
