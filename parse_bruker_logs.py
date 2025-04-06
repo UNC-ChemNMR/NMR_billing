@@ -5,29 +5,22 @@ from pathlib import Path
 import sys
 from datetime import datetime
 import os
-from difflib import get_close_matches
 import matplotlib
-import calendar
+import matplotlib.pyplot as plt
+import calplot
+import base64
 matplotlib.use('Agg')  # Set the backend to Agg (non-interactive)
 import matplotlib.pyplot as plt
 
 # Version information
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
-def parse_log_file(file_path: Path) -> tuple:
-    """Parse the log file to extract experiment details."""
+def parse_log_file(file_paths: list[Path], start_date: str = None, end_date: str = None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Parse multiple log files to extract experiment details and filter by date range."""
     
     # Initialize lists to store parsed data
     all_data = []
     
-    # Read the log file
-    with open(file_path, 'r', encoding='cp1252') as file:
-        lines = file.readlines()
-
-    # Variables to store current experiment details
-    current_experiment = {}
-    failure_flag = False
-
     # Regex patterns to match relevant lines
     patterns = {
         'experiment': re.compile(r'nameOfExperiment:\s*(.*)'),
@@ -42,47 +35,50 @@ def parse_log_file(file_path: Path) -> tuple:
         'end': re.compile(r'timeOfTermination:\s*(.*)')
     }
 
-    for line in lines:
-        for key, pattern in patterns.items():
-            match = pattern.search(line)
-            if not match:
-                continue
-            if key in ['start', 'end']:
-                parts = match.group(1).rsplit(' ', 1)
-                datetime_str = parts[0]
-                timestamp_str = parts[1] if len(parts) == 2 else ''
-                current_experiment[f"{key}_time"] = datetime_str
-                current_experiment[f"{key}_timestamp"] = timestamp_str
-            else:
-                current_experiment[key] = match.group(1)
+    # Parse each file
+    for file_path in file_paths:
+        with open(file_path, 'r', encoding='cp1252') as file:
+            lines = file.readlines()
 
-        # Check if this line indicates a failure
-        if '#Failure' in line:
-            failure_flag = True
-            current_experiment['status'] = 'failed'
-        
-        # If we reach the end of an experiment (indicated by '----' separator), store the data
-        if '----' in line and current_experiment:
-            # Mark the entry as successful or failed
-            if not failure_flag:
-                current_experiment['status'] = 'completed'
-            all_data.append(current_experiment)
+        # Variables to store current experiment details
+        current_experiment = {}
+        failure_flag = False
+
+        for line in lines:
+            for key, pattern in patterns.items():
+                match = pattern.search(line)
+                if not match:
+                    continue
+                if key in ['start', 'end']:
+                    parts = match.group(1).rsplit(' ', 1)
+                    datetime_str = parts[0]
+                    timestamp_str = parts[1] if len(parts) == 2 else ''
+                    current_experiment[f"{key}_time"] = datetime_str
+                    current_experiment[f"{key}_timestamp"] = timestamp_str
+                else:
+                    current_experiment[key] = match.group(1)
+
+            # Check if this line indicates a failure
+            if '#Failure' in line:
+                failure_flag = True
+                current_experiment['status'] = 'failed'
             
-            # Reset the current_experiment and failure_flag for the next block
-            current_experiment = {}
-            failure_flag = False
+            # If we reach the end of an experiment (indicated by '----' separator), store the data
+            if '----' in line and current_experiment:
+                # Mark the entry as successful or failed
+                if not failure_flag:
+                    current_experiment['status'] = 'completed'
+                all_data.append(current_experiment)
+                
+                # Reset the current_experiment and failure_flag for the next block
+                current_experiment = {}
+                failure_flag = False
 
     # Convert list of experiments into a pandas DataFrame
     columns = ['experiment', 'solvent', 'nucleus', 'filename', 'filesize', 'advisor', 'grant', 'onyen', 
                'start_time', 'start_timestamp', 'end_time', 'end_timestamp', 'status']
     
     log = pd.DataFrame(all_data, columns=columns)
-    
-    log.loc[
-        (log['start_time'].isnull() | (log['start_time'] == '') |
-         log['end_time'].isnull() | (log['end_time'] == '')),
-        'status'
-    ] = 'failed'
 
     # Convert timestamps to datetime objects
     def parse_timestamp(ts):
@@ -100,91 +96,30 @@ def parse_log_file(file_path: Path) -> tuple:
     log['start_timestamp'] = log['start_timestamp'].apply(parse_timestamp)
     log['end_timestamp'] = log['end_timestamp'].apply(parse_timestamp)
 
+    # Remove duplicate entries based on start_time
+    log = log.drop_duplicates(subset=['start_time'])
+
+    # Filter by date range if provided
+    if start_date:
+        start_date = pd.to_datetime(start_date)
+        log = log[log['start_timestamp'] >= start_date].copy()
+    if end_date:
+        end_date = pd.to_datetime(end_date)
+        end_date = end_date + pd.Timedelta(days=1)
+        log = log[log['start_timestamp'] < end_date].copy()
+
     # Create two DataFrames: successful_runs and failed_runs
     completed_runs = log[log['status'] == 'completed'].copy()
     failed_runs = log[log['status'] == 'failed'].copy()
 
     return log, completed_runs, failed_runs
 
-def create_cfs(row: pd.Series) -> str:
-    parts = [
-        str(row['fund']) if pd.notna(row['fund']) else '',
-        str(row['source']) if pd.notna(row['source']) else '',
-        str(row['dept']) if pd.notna(row['dept']) else '',
-        str(row['project_ID']) if pd.notna(row['project_ID']) else '',
-        str(row['program']) if pd.notna(row['program']) else '',
-        str(row['cost_code_1']) if pd.notna(row['cost_code_1']) else '',
-        str(row['cost_code_2']) if pd.notna(row['cost_code_2']) else '',
-        str(row['cost_code_3']) if pd.notna(row['cost_code_3']) else ''
-    ]
-    return '-'.join(parts)
 
-def process_ilabs_logs(df: pd.DataFrame, pif: pd.DataFrame) -> tuple:
-    def fuzzy_match(value, choices, cutoff=0.8):
-        # Try to find the closest match, returning the original value if none are close enough
-        matches = get_close_matches(str(value), map(str, choices), n=1, cutoff=cutoff)
-        return matches[0] if matches else value
-
-    # Create copies so as not to modify the original data frames
-    pif_adjusted = pif.copy()
-    df_adjusted = df.copy()
-
-    # Get the valid unique values for 'onyen' and 'grant' from the pif dataframe
-    valid_onyen = pif_adjusted['onyen'].unique()
-    valid_grant = pif_adjusted['grant'].unique()
-
-    # Correct potential typos in the df onyen and grant columns using fuzzy matching
-    df_adjusted['onyen'] = df_adjusted['onyen'].apply(lambda x: fuzzy_match(x, valid_onyen))
-    df_adjusted['grant'] = df_adjusted['grant'].apply(lambda x: fuzzy_match(x, valid_grant))
-
-    # Perform a left join between the adjusted df and pif on the corrected 'onyen' and 'grant' columns
-    merged_df = df_adjusted.merge(pif_adjusted, on=['onyen', 'grant'], how='left')
-    merged_df['CFS'] = merged_df.apply(create_cfs, axis=1)
-    
-    # Segregate rows based on advisor
-    alcon_mask = merged_df['advisor'].str.contains('Alcon', case=False, na=False)
-    nmr_core_mask = merged_df['advisor'].str.contains('ter Horst', case=False, na=False)
-    
-    alcon_df = merged_df[alcon_mask].copy()
-    nmr_core_df = merged_df[nmr_core_mask].copy()
-    
-    # Exclude alcon and nmr_core entries from merged_df
-    merged_df = merged_df[~(alcon_mask | nmr_core_mask)].copy()
-    
-    # Find rows with valid CFS data: using either a complete set of [fund, source, dept, program]
-    # or a complete set of [fund, source, dept, project_ID]
-    valid_mask = (
-        merged_df[['fund', 'source', 'dept', 'program']].notnull().all(axis=1) |
-        merged_df[['fund', 'source', 'dept', 'project_ID']].notnull().all(axis=1)
-    )
-    noCFS_df = merged_df[~valid_mask].copy()
-    
-    # Drop error rows from CFS_df by removing noCFS rows
-    CFS_df = merged_df[valid_mask].copy()
-    
-    # Keep only the required columns for CFS_df
-    CFS_df = CFS_df[['user', 'PI', 'CFS', 'start_time', 'end_time']]
-    
-    return merged_df, CFS_df, noCFS_df, alcon_df, nmr_core_df
-
-def excel_col_letter(n: int) -> str:
-    """Convert a 0-indexed column number to an Excel column letter."""
-    # Converts 0-indexed column number to Excel column letter
-    letter = ""
-    while n >= 0:
-        letter = chr(n % 26 + ord('A')) + letter
-        n = n // 26 - 1
-    return letter
-
-def save_outputs(log_file: Path,
+def save_outputs(base_name: Path,
                  output_dir: Path,
                  log: pd.DataFrame,
                  completed_runs: pd.DataFrame,
                  failed_runs: pd.DataFrame,
-                 CFS_df: pd.DataFrame,
-                 noCFS_df: pd.DataFrame,
-                 alcon_df: pd.DataFrame,
-                 nmr_core_df: pd.DataFrame,
                  ) -> None:
     """Save the processed data to CSV and Excel files."""
     # Ensure output directory exists
@@ -192,147 +127,373 @@ def save_outputs(log_file: Path,
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Build output file names using input log file name
-    base_name = Path(log_file).stem
     log_csv = output_dir / f"{base_name}_log.csv"
-    cfs_csv = output_dir / f"{base_name}_CFS.csv"
-    nocfs_csv = output_dir / f"{base_name}_noCFS.csv"
-    alcon_csv = output_dir / f"{base_name}_Alcon.csv"
-    nmr_core_csv = output_dir / f"{base_name}_NMR_Core.csv"
-    excel_file = output_dir / f"{base_name}_processed.xlsx"
+    completed_runs_csv = output_dir / f"{base_name}_billable.csv"
+    failed_runs_csv = output_dir / f"{base_name}_failed.csv"
     
     # Save CSV files
     log.to_csv(str(log_csv), index=False)
-    alcon_df.to_csv(str(alcon_csv), index=False)
-    nmr_core_df.to_csv(str(nmr_core_csv), index=False)
-    CFS_df.to_csv(str(cfs_csv), index=False)
-    noCFS_df.to_csv(str(nocfs_csv), index=False)
+    completed_runs.to_csv(str(completed_runs_csv), index=False)
+    failed_runs.to_csv(str(failed_runs_csv), index=False)
     
-    # Mapping of sheet names to DataFrames for dynamic range computation
-    sheets_data = {
-        'Log': log,
-        'Successful_Runs': completed_runs,
-        'Failed_Runs': failed_runs,
-        'Successful_CFS': CFS_df,
-        'Failed_CFS': noCFS_df,
-        'Alcon': alcon_df,
-        'NMR_Core': nmr_core_df
-    }
     
-    # Save Excel file with formatting
-    with pd.ExcelWriter(str(excel_file), engine='xlsxwriter') as writer:
-        for sheet_name, df in sheets_data.items():
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
-            
-        workbook = writer.book
-        red_font = workbook.add_format({'font_color': 'red'})
-        
-        # Apply conditional formatting using computed range for each sheet
-        for sheet_name, df in sheets_data.items():
-            rows = df.shape[0] + 1   # include header row
-            cols = df.shape[1]
-            last_col_letter = excel_col_letter(cols - 1)
-            cell_range = f"A1:{last_col_letter}{rows}"
-            worksheet = writer.sheets[sheet_name]
-            worksheet.conditional_format(cell_range, {
-                'type': 'text',
-                'criteria': 'containing',
-                'value': '<NA>',
-                'format': red_font
-            })
-            
-def generate_report(df: pd.DataFrame, log_file: Path, output_dir: Path) -> None:
-    base_name = Path(log_file).stem
-    output_dir = Path(output_dir / "reports")
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Ensure timestamp columns are datetime
-    df = df.copy()  # Avoid SettingWithCopyWarning by working on a copy
-    df['start_timestamp'] = pd.to_datetime(df['start_timestamp'], errors='coerce')
-    df['end_timestamp'] = pd.to_datetime(df['end_timestamp'], errors='coerce')
-
-    # Calculate usage duration in hours
-    df['duration_hours'] = (df['end_timestamp'] - df['start_timestamp']).dt.total_seconds() / 3600
-
-    # Filter out invalid durations
-    df = df[df['duration_hours'] > 0]
-
-    # Distribute usage across hours
-    hourly_usage = pd.Series(0, index=range(24), dtype=float)
+def distribute_usage_by_hour(df: pd.DataFrame) -> dict:
+    """
+    Distribute each experiment’s usage time across hours.
+    Returns a dict mapping hour (0–23) to average usage (percentage).
+    """
+    # Drop rows with missing timestamps
+    df = df.dropna(subset=['start_timestamp', 'end_timestamp'])
+    usage = {h: 0 for h in range(24)}
+    # Determine the total period (in days) across all experiments
+    start_date = df['start_timestamp'].min().date()
+    end_date = df['end_timestamp'].max().date()
+    total_days = (end_date - start_date).days + 1
     for _, row in df.iterrows():
-        start = row['start_timestamp']
+        current = row['start_timestamp']
         end = row['end_timestamp']
-        duration = row['duration_hours']
-
-        # Calculate usage distribution across hours
-        current = start
         while current < end:
             next_hour = (current + pd.Timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
             if next_hour > end:
                 next_hour = end
-            usage_in_hour = (next_hour - current).total_seconds() / 3600
-            hourly_usage[current.hour] += usage_in_hour
+            usage[current.hour] += (next_hour - current).total_seconds() / 3600
+            current = next_hour
+    # For each hour, the maximum possible usage is 1 hour per day.
+    hourly_util = {h: min((usage[h] / total_days) * 100, 100) for h in range(24)}
+    return hourly_util
+
+
+def distribute_usage_by_day(df: pd.DataFrame) -> dict:
+    """
+    Apportion experiment usage to each day.
+    Returns a dict mapping each day (as a date) to utilization percentage.
+    """
+    # Drop rows with missing timestamps
+    df = df.dropna(subset=['start_timestamp', 'end_timestamp'])
+    daily_usage = {}
+    for _, row in df.iterrows():
+        start = row['start_timestamp']
+        end = row['end_timestamp']
+        current_day = start.date()
+        while current_day <= end.date():
+            day_start = pd.Timestamp(current_day)
+            day_end = day_start + pd.Timedelta(days=1)
+            # Overlap between experiment and the day
+            period_start = max(start, day_start)
+            period_end = min(end, day_end)
+            used = max((period_end - period_start).total_seconds() / 3600, 0)
+            daily_usage[current_day] = daily_usage.get(current_day, 0) + used
+            current_day = (day_start + pd.Timedelta(days=1)).date()
+    # Each day has 24 hours available; cap utilization at 100%
+    daily_util = {day: min((hours / 24) * 100, 100) for day, hours in daily_usage.items()}
+    return daily_util
+
+def plot_calendar_heatmap(daily_util: dict) -> None:
+    """
+    Generate a calendar heatmap of daily utilization using calplot.
+    Utilization is shown with the inferno_r colormap.
+    """
+    # Convert dict to pandas Series with a datetime index.
+    util_series = pd.Series(daily_util)
+    util_series.index = pd.to_datetime(util_series.index)
+    start_date = util_series.index.min().strftime("%m/%d/%Y")
+    end_date = util_series.index.max().strftime("%m/%d/%Y")
+    fig, _ = calplot.calplot(
+                util_series,
+                cmap="inferno_r",
+                suptitle=f"Daily Utilization Heatmap ({start_date} to {end_date})",
+                vmin=0, vmax=100
+             )
+    
+    # Set colorbar label manually
+    cbar = fig.axes[-1]  # Access the colorbar axis
+    cbar.set_ylabel("Utilization (%)")
+    
+    
+def plot_hourly_utilization_bar(hourly_util: dict, daily_util: dict) -> None:
+    """
+    Generate a bar plot with average hourly utilization for each hour of a typical day.
+    Y-axis is fixed to 0–100%.
+    """
+    hours = list(hourly_util.keys())
+    values = [hourly_util[h] for h in hours]
+    start_date = pd.to_datetime(min(daily_util.keys())).strftime("%m/%d/%Y")
+    end_date = pd.to_datetime(max(daily_util.keys())).strftime("%m/%d/%Y")
+    plt.figure(figsize=(10,6))
+    bars = plt.bar(hours, values, color='#7BAFD4')  # Carolina blue
+    plt.ylim(0, 100)
+    plt.xlabel("Hour of Day")
+    plt.ylabel("Utilization (%)")
+    plt.title(f"Average Hourly Utilization ({start_date} to {end_date})")
+    # Add labels inside each bar with average hours of usage
+    for bar, value in zip(bars, values):
+        avg_min = value * 0.6  # Convert percentage to minutes (60 minutes in an hour)
+        plt.text(bar.get_x() + bar.get_width() / 2, value / 2, f"{avg_min:.0f}\nmin",
+                 ha='center', va='center', fontsize=8, color='white')
+
+
+def plot_average_daily_utilization_bar(daily_util: dict) -> None:
+    """
+    Generate a bar plot with average daily utilization for each weekday.
+    Y-axis is fixed to 0–100%.
+    Each bar is labeled with the average hours of usage.
+    """
+    util_series = pd.Series(daily_util)
+    # Convert date index to weekday name (0=Monday, 6=Sunday)
+    util_series.index = pd.to_datetime(util_series.index)
+    start_date = util_series.index.min().strftime("%m/%d/%Y")
+    end_date = util_series.index.max().strftime("%m/%d/%Y")
+    weekday_means = util_series.groupby(util_series.index.weekday).mean()
+    # Map weekday numbers to names
+    weekday_names = {0: "Mon", 1: "Tue", 2: "Wed", 3: "Thu", 4: "Fri", 5: "Sat", 6: "Sun"}
+    weekday_means.index = weekday_means.index.map(weekday_names)
+    plt.figure(figsize=(10, 6))
+    bars = plt.bar(weekday_means.index, weekday_means.values, color='#7BAFD4')  # Carolina blue
+    plt.ylim(0, 100)
+    plt.xlabel("Day of Week")
+    plt.ylabel("Average Utilization (%)")
+    plt.title(f"Average Daily Utilization by Weekday ({start_date} to {end_date})")
+    
+    # Add labels inside each bar with average hours of usage
+    for bar, value in zip(bars, weekday_means.values):
+        avg_hours = value * 0.24  # Convert percentage to hours (24 hours in a day)
+        plt.text(bar.get_x() + bar.get_width() / 2, value / 2, f"{avg_hours:.1f}\nhrs",
+                 ha='center', va='center', fontsize=8, color='white')
+
+
+def plot_actual_daily_utilization_bar(daily_util: dict) -> None:
+    """
+    Generate a bar plot with the actual daily utilization for each day
+    in the reported time period.
+    Y-axis is fixed to 0–100%.
+    Each bar is labeled with the number of hours of daily usage.
+    """
+    dates = sorted(daily_util.keys())
+    values = [daily_util[d] for d in dates]
+    start_date = pd.to_datetime(dates[0]).strftime("%m/%d/%Y")
+    end_date = pd.to_datetime(dates[-1]).strftime("%m/%d/%Y")
+    plt.figure(figsize=(12,6))
+    bars = plt.bar(dates, values, color='#7BAFD4')  # Carolina blue
+    plt.ylim(0, 100)
+    plt.xlabel("Date")
+    plt.ylabel("Utilization (%)")
+    plt.title(f"Actual Daily Utilization ({start_date} to {end_date})")
+    plt.xticks(rotation=45)
+    
+    # Add labels inside each bar
+    for bar, value in zip(bars, values):
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width() / 2, height / 2, f"{value * 0.24:.1f}\nhrs", 
+                 ha='center', va='center', fontsize=6, color='white')
+
+
+def plot_lab_usage_bar(df: pd.DataFrame) -> None:
+    """
+    Generate a usage bar plot that displays total usage hours by each lab
+    (determined by the 'advisor' column) and colors each bar by the contributions
+    from each user (determined by the 'onyen' column). No legend is displayed.
+    The labs are sorted by total usage, with the most usage on the left.
+    """
+    # Calculate usage hours per experiment
+    df = df.copy()
+    df['usage_hours'] = (df['end_timestamp'] - df['start_timestamp']).dt.total_seconds() / 3600
+    # Group by lab and onyen, summing the usage hours
+    lab_usage = df.groupby(['advisor', 'onyen'])['usage_hours'].sum().unstack(fill_value=0)
+    # Sort labs by total usage (sum of all users' usage)
+    lab_usage = lab_usage.loc[lab_usage.sum(axis=1).sort_values(ascending=False).index]
+    start_date = df['start_timestamp'].min().strftime("%m/%d/%Y")
+    end_date = df['end_timestamp'].max().strftime("%m/%d/%Y")
+    plt.figure(figsize=(12,8))
+    lab_usage.plot(kind='bar', stacked=True, colormap='tab20', legend=False)
+    plt.xlabel("Lab (Advisor)")
+    plt.ylabel("Usage Hours")
+    plt.title(f"Usage by Lab and User ({start_date} to {end_date})")
+    plt.xticks(rotation=45, ha='right')
+
+
+def plot_hourly_heatmap(df: pd.DataFrame) -> None:
+    """
+    Generate a heatmap plot where rows represent days and columns represent hours,
+    with each cell showing the utilization percentage (max 100% per hour).
+    Days without experiments are included with zero utilization.
+    """
+    # Drop rows with missing timestamps
+    df = df.dropna(subset=['start_timestamp', 'end_timestamp'])
+    usage = {}
+    for _, row in df.iterrows():
+        current = row['start_timestamp']
+        end_time = row['end_timestamp']
+        while current < end_time:
+            day = current.date()
+            hour = current.hour
+            next_hour = (current + pd.Timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+            if next_hour > end_time:
+                next_hour = end_time
+            duration = (next_hour - current).total_seconds()
+            if day not in usage:
+                usage[day] = {h: 0 for h in range(24)}
+            usage[day][hour] += duration
             current = next_hour
 
-    # Plot hourly utilization
-    unique_days = df['start_timestamp'].dt.date.nunique()
-    hourly_utilization = (hourly_usage / unique_days) * 100  # Utilization as percentage of each hour
-    plt.figure(figsize=(10, 6))
-    hourly_utilization.plot(kind='bar', color='lightgreen')
-    plt.title('Average Hourly Utilization')
-    plt.xlabel('Hour of the Day')
-    plt.ylabel('Utilization (%)')
-    plt.ylim(0, 100)  # Set y-axis limits
-    plt.xticks(range(24), labels=range(24), rotation=0)
-    plt.tight_layout()
-    plt.savefig(output_dir / f"{base_name}_hourly_utilization.png")
-    plt.close()
+    # Ensure all days between the start and end dates are included
+    if not df.empty:
+        start_date = df['start_timestamp'].min().date()
+        end_date = df['end_timestamp'].max().date()
+        all_dates = pd.date_range(start=start_date, end=end_date).date
+        for date in all_dates:
+            if date not in usage:
+                usage[date] = {h: 0 for h in range(24)}
 
-    # Plot daily utilization as percentage
-    df['day_of_week'] = df['start_timestamp'].dt.day_name()  # Extract day of the week
-    total_usage_by_day = df.groupby('day_of_week')['duration_hours'].sum()
+    # Build DataFrame from usage dict and convert seconds to percentage (1 hour = 3600 sec)
+    heatmap_data = pd.DataFrame(usage).T.fillna(0).sort_index()
+    heatmap_perc = heatmap_data.apply(lambda col: col.map(lambda x: min(x / 3600 * 100, 100)))
 
-    # Calculate the number of occurrences of each day in the log time period
-    unique_dates = df['start_timestamp'].dt.date.unique()
-    days_count = pd.Series([calendar.day_name[date.weekday()] for date in unique_dates]).value_counts()
+    # Plot heatmap using imshow
+    plt.figure(figsize=(12, 6))
+    plt.imshow(heatmap_perc, aspect='auto', cmap='inferno_r', vmin=0, vmax=100)
+    plt.colorbar(label="Utilization (%)")
+    plt.xlabel("Hour of Day")
+    plt.ylabel("Date")
+    plt.title("Hourly Utilization Heatmap")
+    plt.xticks(ticks=range(24), labels=range(24))
+    plt.yticks(ticks=range(len(heatmap_perc.index)), labels=[str(date) for date in heatmap_perc.index])
 
-    # Normalize usage by the number of occurrences of each day
-    normalized_usage_by_day = (total_usage_by_day / days_count).reindex(list(calendar.day_name), fill_value=0)
 
-    # Calculate total hours in a day (24 hours) and convert to percentage
-    normalized_usage_percentage = (normalized_usage_by_day / 24) * 100
+def plot_failure_hourly_heatmap(df: pd.DataFrame) -> None:
+    """
+    Generate a heatmap plot where rows represent days and columns represent hours,
+    showing the count of failures per hour. Includes all dates between the start
+    and end date, even if there are no failures.
+    """
+    df = df.dropna(subset=['start_timestamp'])
+    df['date'] = df['start_timestamp'].dt.date
+    df['hour'] = df['start_timestamp'].dt.hour
 
-    # Plot normalized daily utilization as percentage
-    plt.figure(figsize=(10, 6))
-    normalized_usage_percentage.plot(kind='bar', color='skyblue')
-    plt.title('Average Daily Utilization (%)')
-    plt.xlabel('Day of the Week')
-    plt.ylabel('Average Utilization (%)')
-    plt.ylim(0, 100)  # Set y-axis limits
+    # Determine the full range of dates
+    if not df.empty:
+        start_date = df['date'].min()
+        end_date = df['date'].max()
+        all_dates = pd.date_range(start=start_date, end=end_date).date
+    else:
+        all_dates = []
+
+    # Create a pivot table with all dates and hours
+    pivot_table = df.groupby(['date', 'hour']).size().unstack(fill_value=0)
+    pivot_table = pivot_table.reindex(index=all_dates, fill_value=0).sort_index()
+
+    # Plot the heatmap
+    plt.figure(figsize=(12, 6))
+    plt.imshow(pivot_table, aspect='auto', cmap='Reds')
+    plt.colorbar(label="Number of Failures")
+    plt.xlabel("Hour of Day")
+    plt.ylabel("Date")
+    plt.title("Hourly Failures Heatmap")
+    plt.xticks(ticks=range(24), labels=range(24))
+    plt.yticks(ticks=range(len(pivot_table.index)), labels=[str(d) for d in pivot_table.index])
+
+
+def plot_top_users_bar(df: pd.DataFrame) -> None:
+    """
+    Generate a bar plot showing the top 20 users (determined by 'onyen')
+    by total experiment time used.
+    """
+    # Calculate total experiment time for each user
+    df['usage_hours'] = (df['end_timestamp'] - df['start_timestamp']).dt.total_seconds() / 3600
+    top_users = df.groupby('onyen')['usage_hours'].sum().nlargest(20)
+    
+    plt.figure(figsize=(12, 6))
+    bars = plt.bar(top_users.index, top_users.values, color='#7BAFD4')
+    plt.xlabel("User (onyen)")
+    plt.ylabel("Total Experiment Time (hours)")
+    plt.title("Top 20 Users by Total Experiment Time")
     plt.xticks(rotation=45, ha='right')
-    plt.tight_layout()
-    plt.savefig(output_dir / f"{base_name}_daily_utilization.png")
-    plt.close()
+    
+    # Add white labels inside each bar
+    for bar in bars:
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width() / 2, height / 2, f'{height:.1f}\nhrs', 
+                 ha='center', va='center', fontsize=8, color='white')
 
-    # Plot usage by lab
-    df['lab'] = df['advisor'].str.lower()  # Normalize lab names
-    df['user'] = df['onyen'].str.lower()  # Normalize user names
-    lab_usage = df.groupby(['lab', 'user'])['duration_hours'].sum().unstack(fill_value=0)
 
-    # Sort labs by total usage
-    lab_usage['total_usage'] = lab_usage.sum(axis=1)
-    lab_usage = lab_usage.sort_values(by='total_usage', ascending=False).drop(columns=['total_usage'])
+def plot_nucleus_type_distribution(df: pd.DataFrame) -> None:
+    """
+    Generate two pie charts displaying the distribution of experiment types (from the 'experiment' column)
+    during the Day queue (8:00-19:00) and Night queue (19:00-8:00).
+    """
+    # Create a copy to avoid side-effects and drop rows missing start_timestamp or experiment info.
+    data = df.dropna(subset=['start_timestamp', 'nucleus']).copy()
+    # Extract start hour from the timestamp
+    data['start_hour'] = data['start_timestamp'].dt.hour
+    # Define day and night queues based on the start hour
+    day_mask = (data['start_hour'] >= 8) & (data['start_hour'] < 19)
+    night_mask = ~day_mask
+    # Group experiment type counts for day and night
+    day_counts = data.loc[day_mask, 'nucleus'].value_counts()
+    night_counts = data.loc[night_mask, 'nucleus'].value_counts()
+    
+    # Create subplots for the two pie charts
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12,6))
+    ax1.pie(day_counts, labels=day_counts.index, autopct='%1.1f%%', startangle=90)
+    ax1.set_title("Nucleus Types - Day Queue (8:00-19:00)")
+    ax2.pie(night_counts, labels=night_counts.index, autopct='%1.1f%%', startangle=90)
+    ax2.set_title("Nucleus Types - Night Queue (19:00-8:00)")
 
-    lab_usage.plot(kind='bar', stacked=True, figsize=(12, 8), colormap='tab20', legend=False)
-    plt.title('Usage by Lab and User')
-    plt.xlabel('Lab')
-    plt.ylabel('Total Usage Hours')
-    plt.xticks(rotation=45, ha='right')
-    plt.tight_layout()
-    plt.savefig(output_dir / f"{base_name}_lab_usage.png")
-    plt.close()
 
-    print(f"Report generated successfully! Check the reports directory: {output_dir}")
+def generate_summary_report(report_dir: Path) -> None:
+    """
+    Generate a self-contained HTML summary report that combines all generated plots with basic descriptions.
+    The plots are embedded as base64-encoded images, making the report portable.
+    """
 
+    # Mapping of plot filenames to descriptions
+    report_plots = {
+        "hourly_utilization_heatmap.png": "Heatmap showing hourly utilization percentages per day.",
+        "average_hourly_utilization_bar.png": "Bar plot depicting average hourly utilization for a typical day.",
+        "daily_utilization_heatmap.png": "Calendar heatmap of daily utilization across the time period.",
+        "daily_utilization_bar.png": "Bar plot showing actual daily utilization with hours labeled.",
+        "average_daily_utilization_bar.png": "Bar plot of average daily utilization by weekday.",
+        "lab_usage_bar.png": "Stacked bar plot of usage hours by lab (advisor) and user (onyen).",
+        "failure_hourly_heatmap.png": "Heatmap displaying the number of failures per hour.",
+        "top_users_bar.png": "Bar plot of the top 20 users by hours.",
+        "experiment_type_distribution.png": "Pie charts showing the distribution of nucleus types during the day and night queues."
+    }
+
+    html = f"""<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Summary Report</title>
+    <style>
+      body {{ font-family: Arial, sans-serif; margin: 20px; }}
+      .plot {{ margin-bottom: 40px; }}
+      .plot img {{ max-width: 100%; height: auto; }}
+    </style>
+  </head>
+  <body>
+    <h1>Summary Report</h1>
+    <p>This report combines all generated plots from the parse_bruker_logs.py script along with brief descriptions.</p>
+"""
+    for filename, desc in report_plots.items():
+        plot_path = report_dir / filename
+        if plot_path.exists():
+            # Encode the image as base64
+            with open(plot_path, "rb") as img_file:
+                encoded_image = base64.b64encode(img_file.read()).decode("utf-8")
+            # Embed the image in the HTML
+            html += f"""
+    <div class="plot">
+      <h2>{filename}</h2>
+      <p>{desc}</p>
+      <img src="data:image/png;base64,{encoded_image}" alt="{desc}">
+    </div>
+"""
+    html += """
+  </body>
+</html>
+"""
+    report_file = report_dir / "summary_report.html"
+    with open(report_file, "w", encoding="utf-8") as f:
+        f.write(html)
 
 def parseArgs():
     """Parse command-line arguments for the script."""
@@ -342,15 +503,25 @@ def parseArgs():
     )
 
     prs.add_argument(
-        "log_file",
+        "log_files",
         type=str,
-        help="Path to the input Bruker log file."
+        nargs='+',
+        help="Paths to the input Bruker log files (space-separated for multiple files)."
+    )
+    
+    prs.add_argument(
+        "--start_date",
+        type=str,
+        default=None,
+        help="Start date (YYYY-MM-DD) to filter log entries. Only entries on or after this date will be processed."
     )
     prs.add_argument(
-        "pif_file",
+        "--end_date",
         type=str,
-        help="Path to the people_in_facility CSV file."
+        default=None,
+        help="End date (YYYY-MM-DD) to filter log entries. Only entries on or before this date will be processed."
     )
+
     prs.add_argument(
         "-o", "--output_dir",
         type=str,
@@ -375,54 +546,90 @@ def main():
     
     try:
         # Get absolute paths for input files based on current working directory
-        log_file = Path(args.log_file).absolute()
-        pif_file = Path(args.pif_file).absolute()
+        log_files = [Path(log_file).absolute() for log_file in args.log_files]
         
         # Handle output directory
         if args.output_dir:
             output_dir = Path(args.output_dir).absolute()
         else:
-            output_dir = log_file.parent
+            output_dir = log_files[0].parent
+        
+        base_name = Path(log_files[0]).stem
         
         print(f"Current working directory: {os.getcwd()}\n")
-        print(f"Processing log file: {log_file}")
-        print(f"Using PIF database: {pif_file}\n")
+        print(f"Processing log file(s): {log_files}")
         
         # Verify files exist before processing
-        if not log_file.exists():
-            raise FileNotFoundError(f"Log file not found: {log_file}")
-        if not pif_file.exists():
-            raise FileNotFoundError(f"PIF file not found: {pif_file}")
+        for log_file in log_files:
+            if not log_file.exists():
+                raise FileNotFoundError(f"Log file not found: {log_file}")
+
         
         # Create output directory if it doesn't exist
         output_dir.mkdir(parents=True, exist_ok=True)
         
         # Read the files directly from their actual locations
-        log, completed_runs, failed_runs = parse_log_file(log_file)
-        pif = pd.read_excel(pif_file, dtype='string')
+        log, completed_runs, failed_runs = parse_log_file(log_files, args.start_date, args.end_date)
+
         
-        merged_df, CFS_df, noCFS_df, alcon_df, nmr_core_df = process_ilabs_logs(completed_runs, pif)
-        
-        save_outputs(log_file, output_dir, log, completed_runs, failed_runs, CFS_df, noCFS_df, alcon_df, nmr_core_df)
+        save_outputs(base_name, output_dir, log, completed_runs, failed_runs)
         
         print(f"\nSuccess! Output saved to: {output_dir}")
-        print(f"  - {Path(log_file).stem}_CFS.csv: {len(CFS_df)} completed runs with valid CFS")
-        print(f"  - {Path(log_file).stem}_noCFS.csv: {len(noCFS_df)} runs without valid CFS")
-        print(f"  - {Path(log_file).stem}_Alcon.csv: {len(alcon_df)} Alcon runs")
-        print(f"  - {Path(log_file).stem}_NMR_Core.csv: {len(nmr_core_df)} NMR Core runs")
-        print(f"  - {Path(log_file).stem}_processed.xlsx: Full report with all data\n")
+        print(f"  - {Path(log_file).stem}_log.csv: {len(log)} Total logged runs")
+        print(f"  - {Path(log_file).stem}_billable.csv: {len(completed_runs)} Billable runs")
+        print(f"  - {Path(log_file).stem}_failed.csv: {len(failed_runs)} Failed runs")
+
         
     except Exception as e:
         print(f"\nError: {str(e)}", file=sys.stderr)
         sys.exit(1)
         
-    try:
-        if args.report:
-            # Generate report based on the log file
-            generate_report(log, log_file, output_dir)
-    except Exception as e:
-        print(f"\nError generating report: {str(e)}", file=sys.stderr)
-        sys.exit(1)
+    if args.report:
+        try:
+            # Convert timestamps to datetime
+            completed_runs['start_timestamp'] = pd.to_datetime(completed_runs['start_timestamp'])
+            completed_runs['end_timestamp'] = pd.to_datetime(completed_runs['end_timestamp'])
+            # Compute utilization distributions
+            hourly_util = distribute_usage_by_hour(completed_runs)
+            daily_util = distribute_usage_by_day(completed_runs)
+
+            # Create reports directory
+            reports_dir = output_dir / "reports"
+            reports_dir.mkdir(parents=True, exist_ok=True)
+
+            # Save utilization data
+            pd.DataFrame({'Date': daily_util.keys(), 'Utilization': daily_util.values()}).to_csv(
+                reports_dir / "daily_util.csv", index=False)
+            pd.DataFrame({'Hour': hourly_util.keys(), 'Utilization': hourly_util.values()}).to_csv(
+                reports_dir / "hourly_util.csv", index=False)
+
+            # Generate and save plots
+            plots = [
+                (plot_hourly_heatmap, (completed_runs,), "hourly_utilization_heatmap.png"),
+                (plot_hourly_utilization_bar, (hourly_util, daily_util), "average_hourly_utilization_bar.png"),
+                (plot_calendar_heatmap, (daily_util,), "daily_utilization_heatmap.png"),
+                (plot_actual_daily_utilization_bar, (daily_util,), "daily_utilization_bar.png"),
+                (plot_average_daily_utilization_bar, (daily_util,), "average_daily_utilization_bar.png"),
+                (plot_lab_usage_bar, (completed_runs,), "lab_usage_bar.png"),
+                (plot_failure_hourly_heatmap, (failed_runs,), "failure_hourly_heatmap.png"),
+                (plot_top_users_bar, (log,), "top_users_bar.png"),
+                (plot_nucleus_type_distribution, (log,), "experiment_type_distribution.png"),
+            ]
+
+            for plot_func, data_args, filename in plots:
+                plt.figure()
+                plot_func(*data_args)
+                plt.savefig(reports_dir / filename, bbox_inches="tight", pad_inches=0.5)
+                plt.close()
+            
+            # NEW: Generate summary report combining all plots
+            generate_summary_report(reports_dir)
+
+        except Exception as e:
+            print(f"\nError generating reports: {str(e)}", file=sys.stderr)
+            sys.exit(1)
+
+        print(f"Reports and plots saved successfully in {reports_dir}!")
 
 if __name__ == "__main__":
     main()
