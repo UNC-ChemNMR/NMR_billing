@@ -1,0 +1,166 @@
+﻿--------------------------------------------
+#NAME?
+----
+----  Created Tue Aug 13 16:59:23 EDT 2024
+--------------------------------------------
+#Login
+  name: prodigy
+  host: czc918979d
+  group:  0
+  date: 08/13/2024 16:59:23 1723582763
+--------------------------------------------
+#Spectrometer: instr
+--------------------------------------------
+#Experiment
+  nameOfExperiment: N Protonicon
+  solvent: CD3CN
+  fileName: DE-1-67 1 1 D:\data\deaster prodigy
+  fileSizeAcq: 65536
+  fileSizeProc: 65536
+  NUCLEUS: 1H
+  INSTRUM: remote_spect
+#User Specific Info
+  Advisor Alexanian
+  Grant number 1111111
+  Onyen jjustine
+  timeOfStart: 08/13/2024 16:59:23 1723582763
+  timeOfTermination: 08/13/2024 17:04:07 1723583047
+--------------------------------------------
+#Experiment
+  nameOfExperiment: N F19                 19F exp. no decoupling
+  solvent: CD3CN
+  fileName: DE-1-67 3 1 D:\data\deaster prodigy
+  fileSizeAcq: 131072
+  fileSizeProc: 65536
+  NUCLEUS: 19F
+  INSTRUM: remote_spect
+#User Specific Info
+  Advisor Alexanian
+  Grant number 2222222
+  Onyen jjustine
+  timeOfStart: 08/13/2024 17:04:08 1723583048
+  timeOfTermination: 08/13/2024 17:04:16 1723583055
+--------------------------------------------
+#Experiment
+  nameOfExperiment: N Protonicon
+  solvent: CD3CN
+  fileName: DE-1-69 1 1 D:\data\deaster prodigy
+  fileSizeAcq: 65536
+  fileSizeProc: 65536
+  NUCLEUS: 1H
+  INSTRUM: remote_spect
+#User Specific Info
+  Advisor Gagne
+  Grant number 1010101
+  Onyen deaster
+  timeOfStart: 
+  timeOfTermination: 08/13/2024 17:07:51 1723583271
+--------------------------------------------
+#Experiment
+  nameOfExperiment: N F19                 19F exp. no decoupling
+  solvent: CD3CN
+  fileName: DE-1-69 3 1 D:\data\deaster prodigy
+  fileSizeAcq: 131072
+  fileSizeProc: 65536
+  NUCLEUS: 19F
+  INSTRUM: remote_spect
+#User Specific Info
+  Advisor Dempsey
+  Grant number 4444444
+  Onyen eaporter
+  timeOfStart: 08/13/2024 17:07:51 1723583271
+  timeOfTermination: 08/13/2024 17:07:59 1723583279
+--------------------------------------------
+#Experiment
+  nameOfExperiment: N PROTON              1H experiment
+  solvent: CDCl3
+  fileName: CW-253_1 1 1 D:\data\westlunc prodigy
+  fileSizeAcq: 65536
+  fileSizeProc: 65536
+  NUCLEUS: 1H
+  INSTRUM: remote_spect
+#User Specific Info
+  Advisor Meek
+  Grant number 1010101
+  Onyen westlunc
+  timeOfStart: 08/13/2024 17:07:59 1723583279
+  timeOfTermination: 08/13/2024 17:13:50 1723583630
+--------------------------------------------
+#Experiment
+  nameOfExperiment: N F19                 19F exp. no decoupling
+  solvent: CDCl3
+  fileName: CW-253_1 2 1 D:\data\westlunc prodigy
+  fileSizeAcq: 131072
+  fileSizeProc: 65536
+  NUCLEUS: 19F
+  INSTRUM: remote_spect
+#User Specific Info
+  Advisor Zhukhovitskiy
+  Grant number 5555555
+  Onyen andrewjk
+  timeOfStart: 08/13/2024 17:13:51 1723583631
+  timeOfTermination: 08/13/2024 17:13:58 1723583638
+--------------------------------------------
+#Experiment
+  nameOfExperiment: N PROTON              1H experiment
+  solvent: CDCl3
+  fileName: SNA-CIDT1-196_B 1 1 D:\data\sangles prodigy
+  fileSizeAcq: 65536
+  fileSizeProc: 65536
+  NUCLEUS: 1H
+  INSTRUM: remote_spect
+#User Specific Info
+  Advisor Zhukhovitskiy
+  Grant number 5555555
+  Onyen benkruse@live.unc.edu
+  timeOfStart: 08/13/2024 17:24:22 1723584262
+#Failure
+  timeOfTermination: 08/13/2024 17:26:22 1723584382
+--------------------------------------------
+#Experiment
+  nameOfExperiment: N PROTON              1H experiment
+  solvent: Acetone
+  fileName: WMS-2-004B-post 1 1 D:\data\wswoffo prodigy
+  fileSizeAcq: 65536
+  fileSizeProc: 65536
+  NUCLEUS: 1H
+  INSTRUM: remote_spect
+#User Specific Info
+  Advisor Waters
+  Grant number 6666666
+  Onyen lstlouis
+  timeOfStart: 10/04/2024 09:10:01 1728047401
+  timeOfTermination: 
+--------------------------------------------
+--------------------------------------------
+#Experiment
+  nameOfExperiment: N PROTON              1H experiment
+  solvent: Acetone
+  fileName: WMS-2-004B-post 1 1 D:\data\sethv prodigy
+  fileSizeAcq: 65536
+  fileSizeProc: 65536
+  NUCLEUS: 1H
+  INSTRUM: remote_spect
+#User Specific Info
+  Advisor Ter horst
+  Grant number 00000
+  Onyen sethv
+  timeOfStart: 08/13/2024 17:13:51 1723583631
+  timeOfTermination: 08/13/2024 17:13:58 1723583638
+--------------------------------------------
+--------------------------------------------
+#Experiment
+  nameOfExperiment: N PROTON              1H experiment
+  solvent: Acetone
+  fileName: WMS-2-004B-post 1 1 D:\data\jay prodigy
+  fileSizeAcq: 65536
+  fileSizeProc: 65536
+  NUCLEUS: 1H
+  INSTRUM: remote_spect
+#User Specific Info
+  Advisor Alcon
+  Grant number 99999
+  Onyen jay
+  timeOfStart: 08/13/2024 16:59:23 1723582763
+  timeOfTermination: 08/13/2024 17:04:07 1723583047
+--------------------------------------------

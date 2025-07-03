@@ -1,7 +1,7 @@
 # NMR Billing Software
 
-Author: Seth D. Veenbaas  
-Last updated: 04/01/2025
+**Author**: Seth D. Veenbaas  
+**Last updated**: 04/01/2025
 
 ## Overview
 
@@ -10,13 +10,13 @@ This repository contains two scripts (packaged as Windows .exe files) that work 
 1. **parse_bruker_logs.exe**  
    - Parses Bruker formatted log files (.full, .txt) to extract experiment details.
    - Exports the parsed data into a properly formatted CSV file.
-   - The CSV file is designed as input for the second script.
+   - The CSV file is designed as input for `generate_cfs.exe`.
 
 2. **generate_cfs.exe**  
    - Reads the CSV from `parse_bruker_logs.exe` along with a PIF database Excel file (.xlsx).
    - Generates chartfield strings (CFS) for each experiment.
    - Saves successfully generated CFS into CSV files grouped by user affiliation in a subdirectory called `CFS`.
-   - Saves incomplete CFS experiment data into CSV files grouped by affiliation in a subdirectory called `noCFS`.
+   - Saves incomplete CFS experiment data into a CSV file called `noCFS`.
    - Produces an Excel report combining all outputs.
    - Includes an overwrite protection feature; by default, the program will ask for confirmation before overwriting existing files unless the `--overwrite` flag is used.
 
@@ -69,7 +69,7 @@ Both scripts are distributed as Windows executable files. Download the latest ve
 2. Navigate to the `Releases` section or the `/dist` directory.
 3. Download the latest version of `parse_bruker_logs.exe` and `generate_cfs.exe`.
 4. Save the files to a folder on your computer for easy access.
-5. Follow the [instruction](#steps-to-add-to-path) for adding the script to you PATH.
+5. Follow the [instruction](#steps-to-add-to-path) for adding the script to you PATHs so you can run the program from any directory on your computer.
 
 ### 1. Running parse_bruker_logs.exe
 
@@ -79,18 +79,18 @@ This program converts Bruker log files into a CSV file.
 
 1. Open the Windows Command Prompt (press **Win + R**, type `cmd`, press **Enter**).
 
-2. Navigate to the folder containing `parse_bruker_logs.exe` using the `cd` command (change directory). For example:
+2. Navigate to the folder containing `C:\path\to\log_file.full` using the `cd` command (change directory). For example:
    ```cmd
-   cd C:\path\to\parse_bruker_logs
+   cd C:\path\to\log_file.full
    ```
 
 3. Run the executable with the Bruker log file as an argument. For example:
    ```cmd
-   parse_bruker_logs.exe C:\path\to\log_file.full -o C:\path\to\output_directory
+   parse_bruker_logs.exe log_file.full -o output_directory
    ```
    - This will create a CSV file (e.g., `log_file.csv`) in the specified output directory.
 
-4. Use the `--help` flag to view additional options:
+4. Use the `--help` flag to view additional options such as generating reports:
    ```cmd
    parse_bruker_logs.exe --help
    ```
@@ -103,18 +103,19 @@ This program generates chartfield strings (CFS) from the CSV output and the PIF 
 
 1. Open the Windows Command Prompt.
 
-2. Navigate to the folder containing `generate_cfs.exe` using the `cd` command (change directory):
+2. Navigate to the folder containing your log files (.csv) using the `cd` command (change directory):
    ```cmd
-   cd C:\path\to\parse_bruker_logs
+   cd C:\path\to\log_files_folder
    ```
 
 3. Run the executable with the CSV file from `parse_bruker_logs.exe` and the PIF file:
    ```cmd
-   generate_cfs.exe C:\path\to\log_file.csv C:\path\to\pif_file.xlsx -o C:\path\to\output_directory
+   generate_cfs.exe log_file.csv C:\path\to\pif_file.xlsx -i instrument_name -o C:\path\to\output_directory
    ```
+
    - The program will generate:
-     - A set of CSV files with complete CFS, saved in the subdirectory `CFS` (files named like `NEO400_UNC-CH_CFS.csv`, `NEO400_NMR-CORE_CFS.csv`, etc., based on user affiliation).
-     - A set of CSV files with incomplete CFS data, saved in the subdirectory `noCFS` (files named like `NEO400_UNC-CH_noCFS.csv`, `NEO400_EXTERNAL-COMMERCIAL_noCFS.csv`, etc.).
+     - A set of CSV files with complete CFS (files named like `NEO400_UNC-CH_CFS.csv`, `NEO400_NMR-CORE_CFS.csv`, etc., based on user affiliation).
+     - A CSV file with incomplete CFS data called `*_noCFS.csv`.
      - An Excel report aggregating all outputs (named like `NEO400_processed.xlsx`).
 
 4. **Overwrite Protection:**  
@@ -133,7 +134,7 @@ This program generates chartfield strings (CFS) from the CSV output and the PIF 
 
 - **Correcting Incomplete Chartfield Strings:**
     1. Make changes to `pif.xlxs` such as adding onyen or new grant information.
-    2. Make changes to a `*_noCFS.csv` (from the `noCFS` folder) such as fixing user input typo.
+    2. Make changes to the `*_noCFS.csv` file such as fixing user input typo.
     3. Re-run `generate_cfs.exe` with updated files.
 
 - **Reports:**  
@@ -151,12 +152,36 @@ This program generates chartfield strings (CFS) from the CSV output and the PIF 
 
 
 ## Features:
+### v 1.0.0
 - Users can bill multiple CFS in a single billing period.
 - The reported PI name is sourced from the `pif.xlsx` file **not** from user input.
 - Alcon and NMR Core usage is automatically extracted from internal billable usage.
 - Automatic correction of user input errors, such as misspelled onyens or invalid grant identifiers.
 - Automatically extracts Onyens (UNC usernames) from user-inputted UNC email addresses. **Note**: The email must follow the format `onyen@{domain}.edu` for accurate parsing.
-- Generate utilization/usage/failure reports
+- Generate reports to display instrument utilization (hourly and daily) and lab usage
+
+### v 1.1.0
+
+#### parse_bruker_logs
+
+- Parses Bruker log files (.full, .txt) into a spreadsheet (.csv).
+- Comprehensive reporting for completed experiments to visualize instrument utilization and usage
+
+#### generate_cfs
+- Uses parsed log files (.csv) and a people is facility spreadsheet (.xlxs) to generate chart field strings for billing (iLabs compatible).
+- Separates outputs by user's affiliation (UNC-CH, external-commercial, etc.)
+- Comprehensive reporting for completed experiments to visualize instrument utilization and usage
+
+### v 1.2.0
+
+#### parse_bruker_logs
+
+- Valid start and end times required for a run to be 'billable'.
+
+#### generate_cfs
+
+- User inputted onyens are case insensitive.
+- CLI argument (-i, --instrument) can be used to add instrument name to `CFS.csv`. [user, PI, instrument, CFS, start_time, end_time]. 
 
 ## Reports
 
@@ -194,29 +219,30 @@ The `-r` or `--report` argument in both the `parse_bruker_logs.exe` and `generat
 
 ## Usage (Python)
 
-You can run the Python version of the tool directly from the command line. Follow these steps:
+You can run the Python version of the tool directly from the command line.
 
 ### Prerequisites
 
-Ensure you have Python 3.9 or later installed on your system. Install the required dependencies using pip:
+- **Python 3.9 or later** must be installed.
+- Install required packages:
+   ```bash
+   pip install pandas openpyxl numpy matplotlib calplot
+   ```
 
-```bash
-pip install pandas openpyxl numpy matplotlib calplot
-```
+### How to Run
 
-### Running the Tool
+1. Open a terminal or command prompt.
+2. Navigate to the folder containing the Python script (e.g., `parse_bruker_logs.py`).
+3. Run the script with the following command:
+    ```bash
+    python parse_bruker_logs.py /path/to/log_file.csv /path/to/pif_file.xlsx -o /path/to/output_directory
+    ```
 
-To execute the script, open your terminal and navigate to the directory containing the Python source file (e.g., `parse_bruker_logs.py`). Then run the script as follows:
-
-```bash
-python parse_bruker_logs.py /path/to/log_file.csv /path/to/pif_file.xlsx -o /path/to/output_directory
-```
-
-### Example
+#### Example
 
 ```bash
 python parse_bruker_logs.py ./test/neo400_log_test.csv ./test/pif_test.xlsx -o ./test/output
 ```
 
-Upon execution, the script will process the provided files and generate the output reports similar to the executable version.
+The script will process your files and generate output reports, just like the Windows executable version.
 

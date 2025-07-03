@@ -1,0 +1,9 @@
+experiment,solvent,nucleus,filename,filesize,advisor,grant,onyen,start_time,start_timestamp,end_time,end_timestamp,status
+N Protonicon,CD3CN,1H,DE-1-67 1 1 D:\data\deaster prodigy,65536,Alexanian,1111111,jjustine,08/13/2024 16:59:23,2024-08-13 16:59:23,08/13/2024 17:04:07,2024-08-13 17:04:07,completed
+N F19                 19F exp. no decoupling,CD3CN,19F,DE-1-67 3 1 D:\data\deaster prodigy,131072,Alexanian,2222222,jjustine,08/13/2024 17:04:08,2024-08-13 17:04:08,08/13/2024 17:04:16,2024-08-13 17:04:15,completed
+N Protonicon,CD3CN,1H,DE-1-69 1 1 D:\data\deaster prodigy,65536,Gagne,1010101,deaster,,,08/13/2024 17:07:51,2024-08-13 17:07:51,failed
+N F19                 19F exp. no decoupling,CD3CN,19F,DE-1-69 3 1 D:\data\deaster prodigy,131072,Dempsey,4444444,eaporter,08/13/2024 17:07:51,2024-08-13 17:07:51,08/13/2024 17:07:59,2024-08-13 17:07:59,completed
+N PROTON              1H experiment,CDCl3,1H,CW-253_1 1 1 D:\data\westlunc prodigy,65536,Meek,1010101,westlunc,08/13/2024 17:07:59,2024-08-13 17:07:59,08/13/2024 17:13:50,2024-08-13 17:13:50,completed
+N F19                 19F exp. no decoupling,CDCl3,19F,CW-253_1 2 1 D:\data\westlunc prodigy,131072,Zhukhovitskiy,5555555,andrewjk,08/13/2024 17:13:51,2024-08-13 17:13:51,08/13/2024 17:13:58,2024-08-13 17:13:58,completed
+N PROTON              1H experiment,CDCl3,1H,SNA-CIDT1-196_B 1 1 D:\data\sangles prodigy,65536,Zhukhovitskiy,5555555,benkruse,08/13/2024 17:24:22,2024-08-13 17:24:22,08/13/2024 17:26:22,2024-08-13 17:26:22,failed
+N PROTON              1H experiment,Acetone,1H,WMS-2-004B-post 1 1 D:\data\wswoffo prodigy,65536,Waters,6666666,lstlouis,10/04/2024 09:10:01,2024-10-04 09:10:01,,,failed

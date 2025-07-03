@@ -34,7 +34,7 @@ def process_ilabs_logs(df: pd.DataFrame, pif: pd.DataFrame) -> tuple:
     pif_adjusted = pif.copy()
     # Define the required and optional columns
     required_columns = ['grant', 'onyen', 'start_time', 'end_time']
-    optional_columns = ['experiment', 'solvent', 'filename', 'filesize', 'advisor', 'start_timestamp', 'end_timestamp']
+    optional_columns = ['instrument', 'experiment', 'solvent', 'filename', 'filesize', 'advisor', 'start_timestamp', 'end_timestamp']
     
     # Ensure required columns are present
     missing_required = [col for col in required_columns if col not in df.columns]
@@ -45,17 +45,15 @@ def process_ilabs_logs(df: pd.DataFrame, pif: pd.DataFrame) -> tuple:
     column_filter = required_columns + [col for col in optional_columns if col in df.columns]
     df_adjusted = df[column_filter].copy()
 
+    pif_adjusted['onyen'] = pif_adjusted['onyen'].str.lower()
     valid_onyen = pif_adjusted['onyen'].unique()
     valid_grant = pif_adjusted['grant'].unique()
 
+    df_adjusted['onyen'] = df_adjusted['onyen'].str.lower()
     df_adjusted['onyen'] = df_adjusted['onyen'].apply(lambda x: fuzzy_match(x, valid_onyen))
     df_adjusted['grant'] = df_adjusted['grant'].apply(lambda x: fuzzy_match(x, valid_grant))
 
     merged_df = df_adjusted.merge(pif_adjusted, on=['onyen', 'grant'], how='left')
-    
-    # Save merged DataFrame for debugging
-    merged_df.to_csv('merged_debug.csv', index=False)
-    
     merged_df['CFS'] = merged_df.apply(create_cfs, axis=1)
     
     # New: Do not segregate based on advisor.
@@ -68,7 +66,10 @@ def process_ilabs_logs(df: pd.DataFrame, pif: pd.DataFrame) -> tuple:
     CFS_df = merged_df[valid_mask].copy()
     
     # Keep only required columns and include affiliation from pif (assumed to be in merged_df)
-    CFS_df = CFS_df[['user', 'PI', 'CFS', 'start_time', 'end_time', 'affiliation']]
+    CFS_df = CFS_df[['user', 'PI', 'instrument', 'CFS', 'affiliation', 'start_time', 'end_time']]
+    
+    # Move 'advisor' column next to onyen
+    noCFS_df = noCFS_df[['onyen', 'grant', 'advisor', 'instrument', 'start_time', 'end_time', 'experiment', 'solvent', 'filename']]
     
     return CFS_df, noCFS_df
 
@@ -97,8 +98,8 @@ def save_outputs(log_file: Path,
     base_name = Path(log_file).stem
 
     # Create subdirectories for CFS and noCFS outputs
-    cfs_dir = output_dir / "CFS"
-    nocfs_dir = output_dir / "noCFS"
+    cfs_dir = output_dir
+    nocfs_dir = output_dir
     cfs_dir.mkdir(parents=True, exist_ok=True)
     nocfs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -110,9 +111,7 @@ def save_outputs(log_file: Path,
     
     # Group outputs by affiliation (case-insensitive)
     CFS_df['affiliation'] = CFS_df['affiliation'].str.upper().fillna("UNKNOWN")
-    noCFS_df['affiliation'] = noCFS_df['affiliation'].str.upper().fillna("UNKNOWN")
     cfs_groups = dict(tuple(CFS_df.groupby('affiliation')))
-    nocfs_groups = dict(tuple(noCFS_df.groupby('affiliation')))
     
     # Save one CSV for each affiliation group into respective subdirectories
     for affil, group in cfs_groups.items():
@@ -120,13 +119,7 @@ def save_outputs(log_file: Path,
         if affil_csv.exists() and not overwrite and not prompt_overwrite(affil_csv):
             sys.exit(f"Overwrite not confirmed for {affil_csv}. Exiting.")
         group.drop(columns=['affiliation'], inplace=True)
-        group.to_csv(str(affil_csv), index=False)
-        
-    for affil, group in nocfs_groups.items():
-        affil_csv = nocfs_dir / f"{base_name}_{affil}_noCFS.csv"
-        if affil_csv.exists() and not overwrite and not prompt_overwrite(affil_csv):
-            sys.exit(f"Overwrite not confirmed for {affil_csv}. Exiting.")
-        group.to_csv(str(affil_csv), index=False)
+        group.to_csv(str(affil_csv), index=False, header=False)
     
     # Prepare Excel sheets: global completed experiments, global failed experiments,
     # and per-affiliation sheets for both successful (CFS) and failed (noCFS) outputs.
@@ -140,9 +133,7 @@ def save_outputs(log_file: Path,
     for affil, group in cfs_groups.items():
         sheets_data[f"CFS_{affil}"] = group
     
-    sheets_data['all_noCFS_all'] = noCFS_df
-    for affil, group in nocfs_groups.items():
-        sheets_data[f"noCFS_{affil}"] = group
+    sheets_data['noCFS_all'] = noCFS_df
     
     with pd.ExcelWriter(str(excel_file), engine='xlsxwriter') as writer:
         for sheet_name, df in sheets_data.items():
@@ -532,12 +523,17 @@ def parseArgs():
     prs.add_argument(
         "log_file",
         type=str,
-        help="Path to the input Bruker log file."
+        help="Path to the input Bruker log file (required)."
     )
     prs.add_argument(
         "pif_file",
         type=str,
-        help="Path to the people_in_facility CSV file."
+        help="Path to the people_in_facility CSV file (required)."
+    )
+    prs.add_argument(
+        "-i", "--instrument",
+        type=str,
+        help="Name of the NMR instrument."
     )
     prs.add_argument(
         "-o", "--output_dir",
@@ -584,6 +580,7 @@ def main():
         
         output_dir.mkdir(parents=True, exist_ok=True)
         log = pd.read_csv(log_file, dtype='string')
+        log.insert(0, 'instrument', args.instrument)
         pif = pd.read_excel(pif_file, dtype='string')
         
         # Updated process_ilabs_logs now returns only CFS_df and noCFS_df after grouping by affiliation.
@@ -598,9 +595,6 @@ def main():
             
         print()
         print(f"  - {Path(log_file).stem}_noCFS.csv: {len(noCFS_df)} runs without valid CFS")
-        
-        for affil, group in noCFS_df.groupby(noCFS_df['affiliation'].str.upper().fillna("UNKNOWN")):
-            print(f"\t  - {Path(log_file).stem}_{affil}.csv: {len(group)} runs for affiliation '{affil}'")
             
         print()
         print(f"  - {Path(log_file).stem}_processed.xlsx: Full report with all sheets\n")

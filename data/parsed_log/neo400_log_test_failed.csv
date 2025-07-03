@@ -1,0 +1,4 @@
+experiment,solvent,nucleus,filename,filesize,advisor,grant,onyen,start_time,start_timestamp,end_time,end_timestamp,status
+N Protonicon,CD3CN,1H,DE-1-69 1 1 D:\data\deaster prodigy,65536,Gagne,1010101,deaster,,,08/13/2024 17:07:51,2024-08-13 17:07:51,failed
+N PROTON              1H experiment,CDCl3,1H,SNA-CIDT1-196_B 1 1 D:\data\sangles prodigy,65536,Zhukhovitskiy,5555555,benkruse,08/13/2024 17:24:22,2024-08-13 17:24:22,08/13/2024 17:26:22,2024-08-13 17:26:22,failed
+N PROTON              1H experiment,Acetone,1H,WMS-2-004B-post 1 1 D:\data\wswoffo prodigy,65536,Waters,6666666,lstlouis,10/04/2024 09:10:01,2024-10-04 09:10:01,,,failed

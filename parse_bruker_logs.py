@@ -66,7 +66,12 @@ def parse_log_file(file_paths: list[Path], start_date: str = None, end_date: str
             # If we reach the end of an experiment (indicated by '----' separator), store the data
             if '----' in line and current_experiment:
                 # Mark the entry as successful or failed
-                if not failure_flag:
+                # If start or end timestamp is missing or empty, mark as failed
+                start_ts = current_experiment.get('start_timestamp', '')
+                end_ts = current_experiment.get('end_timestamp', '')
+                if not start_ts or not end_ts:
+                    current_experiment['status'] = 'failed'
+                elif not failure_flag:
                     current_experiment['status'] = 'completed'
                 all_data.append(current_experiment)
                 
